@@ -1,7 +1,51 @@
 // Franz Diebold
 
-const core = require('@actions/core');
-const github = require('@actions/github');
+const fs = require('fs');
+const os = require('os');
+
+const core = {
+  exportVariable(name, value) {
+    const stringValue = value == null ? '' : String(value);
+    process.env[name] = stringValue;
+
+    if (process.env.GITHUB_ENV) {
+      const delimiter = `ghenv_${name}_${Date.now()}`;
+      const command = `${name}<<${delimiter}${os.EOL}` +
+          `${stringValue}${os.EOL}${delimiter}${os.EOL}`;
+      fs.appendFileSync(
+          process.env.GITHUB_ENV,
+          command,
+      );
+    }
+  },
+  info(message) {
+    console.log(message);
+  },
+  setFailed(message) {
+    process.exitCode = 1;
+    console.error(message);
+  },
+};
+
+/**
+ * Load the GitHub Actions event payload from disk.
+ * @return {Object} The parsed event payload, or an empty object.
+ */
+function loadEventPayload() {
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (!eventPath) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+  } catch (error) {
+    core.info(`Unable to read GitHub event payload: ${error.message}`);
+    return {};
+  }
+}
+
+const github = {context: {payload: loadEventPayload()}};
 
 /**
  * Slugify a given string.
@@ -58,12 +102,13 @@ function getShaShort(fullSha) {
  *
  * @param {string} branch
  * @param {string} prTitle
+ * @return {boolean} True when deployment should be skipped.
  */
 function shouldSkipDeploy(branch, prTitle) {
   if ((prTitle || '').toLowerCase().includes('[skip deploy]')) {
     return true;
   }
-  return branch.toLowerCase().includes('skipdeploy');
+  return (branch || '').toLowerCase().includes('skipdeploy');
 }
 
 // https://docs.github.com/en/free-pro-team@latest/actions/reference/environment-variables#default-environment-variables
@@ -109,7 +154,8 @@ try {
 
     core.exportVariable('CI_REPOSITORY_NAME_SLUG', slugify(repositoryName));
     core.info(
-        `Set CI_REPOSITORY_NAME_SLUG=` + `${process.env.CI_REPOSITORY_NAME_SLUG}`,
+        'Set CI_REPOSITORY_NAME_SLUG=' +
+        `${process.env.CI_REPOSITORY_NAME_SLUG}`,
     );
   } else {
     core.info(
@@ -163,7 +209,8 @@ try {
 
     core.exportVariable('CI_ACTION_REF_NAME_SLUG', slugify(branchName));
     core.info(
-        'Set CI_ACTION_REF_NAME_SLUG=' + `${process.env.CI_ACTION_REF_NAME_SLUG}`,
+        'Set CI_ACTION_REF_NAME_SLUG=' +
+        `${process.env.CI_ACTION_REF_NAME_SLUG}`,
     );
   } else {
     core.info(
@@ -259,33 +306,33 @@ try {
 
   // hipages custom variables
 
-  const repo_slug = process.env.CI_REPOSITORY_NAME_SLUG;
+  const repoSlug = process.env.CI_REPOSITORY_NAME_SLUG;
 
-  const app_name = process.env.CI_REPOSITORY_NAME_SLUG;
-  core.exportVariable('CI_HIPAGES_APP_NAME', app_name);
+  const appName = process.env.CI_REPOSITORY_NAME_SLUG;
+  core.exportVariable('CI_HIPAGES_APP_NAME', appName);
   core.info(`Set CI_HIPAGES_APP_NAME=${process.env.CI_HIPAGES_APP_NAME}`);
 
   if (pullRequest) {
-    // Set SHA to the Head of the PR commit so that it can be used in the deploy step
+    // Set SHA to the PR head commit for the deploy step.
     // i.e. ffac537e6cbbf934b08745a378932722df287a53
-    const head_sha = github.context.payload.pull_request.head.sha;
-    core.exportVariable('CI_SHA', head_sha);
+    const headSha = github.context.payload.pull_request.head.sha;
+    core.exportVariable('CI_SHA', headSha);
     core.info(`Set CI_SHA=${process.env.CI_SHA}`);
 
-    core.exportVariable('CI_SHA_SHORT', getShaShort(head_sha));
+    core.exportVariable('CI_SHA_SHORT', getShaShort(headSha));
     core.info(`Set CI_SHA_SHORT=${process.env.CI_SHA_SHORT}`);
 
     // Set correct branch name for PRs
-    const branch_slug = process.env.CI_HEAD_REF_SLUG;
+    const branchSlug = process.env.CI_HEAD_REF_SLUG;
     core.exportVariable(
         'CI_HIPAGES_RELEASE_NAME',
-        repo_slug + '-' + branch_slug,
+        repoSlug + '-' + branchSlug,
     );
     core.info(
         `Set CI_HIPAGES_RELEASE_NAME=${process.env.CI_HIPAGES_RELEASE_NAME}`,
     );
 
-    core.exportVariable('CI_HIPAGES_BRANCH_SLUG', branch_slug);
+    core.exportVariable('CI_HIPAGES_BRANCH_SLUG', branchSlug);
     core.info(
         `Set CI_HIPAGES_BRANCH_SLUG=${process.env.CI_HIPAGES_BRANCH_SLUG}`,
     );
@@ -298,16 +345,16 @@ try {
     core.exportVariable('CI_SHA', sha);
     core.info(`Set CI_SHA=${process.env.CI_SHA}`);
 
-    const branch_slug = process.env.CI_REF_NAME_SLUG;
+    const branchSlug = process.env.CI_REF_NAME_SLUG;
     core.exportVariable(
         'CI_HIPAGES_RELEASE_NAME',
-        repo_slug + '-' + branch_slug,
+        repoSlug + '-' + branchSlug,
     );
     core.info(
         `Set CI_HIPAGES_RELEASE_NAME=${process.env.CI_HIPAGES_RELEASE_NAME}`,
     );
 
-    core.exportVariable('CI_HIPAGES_BRANCH_SLUG', branch_slug);
+    core.exportVariable('CI_HIPAGES_BRANCH_SLUG', branchSlug);
     core.info(
         `Set CI_HIPAGES_BRANCH_SLUG=${process.env.CI_HIPAGES_BRANCH_SLUG}`,
     );
