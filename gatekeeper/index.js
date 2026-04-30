@@ -1,11 +1,3 @@
-const core = require("@actions/core");
-const github = require("@actions/github");
-const fs = require("fs");
-
-// List of files / policies to check
-const github_token = core.getInput("token");
-const context = github.context;
-
 console.log("Checking policies...");
 
 // console.log("PR context: ");
